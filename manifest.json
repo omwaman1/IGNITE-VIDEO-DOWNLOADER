@@ -1,0 +1,68 @@
+{
+    "manifest_version": 3,
+    "name": "IGNITE Downloader",
+    "version": "4.1",
+    "description": "Advanced video stream detector with integrated download server, folder browsing, and batch download",
+    "permissions": [
+        "webRequest",
+        "downloads",
+        "storage",
+        "activeTab",
+        "scripting",
+        "tabs",
+        "notifications",
+        "declarativeNetRequest",
+        "sidePanel"
+    ],
+    "host_permissions": [
+        "<all_urls>",
+        "https://ignite247api.classx.co.in/*",
+        "https://*.classx.co.in/*",
+        "https://*.akamai.net.in/*",
+        "https://igjhvhsdgavf.akamai.net.in/*",
+        "https://transcoded-videos.classx.co.in/*"
+    ],
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "action": {
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        },
+        "default_title": "IGNITE Downloader - Click to open side panel"
+    },
+    "side_panel": {
+        "default_path": "popup.html"
+    },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_start",
+            "all_frames": true
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "injected.js",
+                "download_worker.js"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ]
+}

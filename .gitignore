@@ -1,0 +1,24 @@
+node_modules/
+downloads/
+temp/
+.env
+*.mp4
+*.mkv
+*.m3u8
+*.txt
+
+# Test/debug files
+test*.js
+test*.html
+analyze_urls.js
+check_video_format.js
+dump_ids.js
+find_neighbors.js
+find_valid_neighbors.js
+fix_seeking.js
+
+# Lock file
+package-lock.json
+
+# Gemini
+.gemini/

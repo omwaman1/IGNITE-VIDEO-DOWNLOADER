@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ignite Video Downloader</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar: Folder Explorer -->
+        <aside class="sidebar">
+            <header class="sidebar-header">
+                <i class="fa-solid fa-fire"></i>
+                <h2>Ignite Explorer</h2>
+            </header>
+            <div class="sidebar-course-config"
+                style="padding: 10px 20px; border-bottom: 1px solid var(--border-color); background: #f8fafc; display: flex; align-items: center; gap: 10px;">
+                <label for="course-id-input"
+                    style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">Course ID:</label>
+                <input type="number" id="course-id-input" class="premium-input" style="width: 80px; padding: 4px 8px;"
+                    placeholder="e.g. 725">
+                <button id="btn-load-course" class="btn-secondary" style="padding: 5px 10px; font-size: 12px;"><i
+                        class="fa-solid fa-rotate-right"></i> Load</button>
+            </div>
+            <div class="explorer-scroll-area">
+                <!-- Root Folder Tree loads here -->
+                <ul id="folder-tree" class="tree-root">
+                    <li class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading Root...</li>
+                </ul>
+            </div>
+            <div class="sidebar-footer">
+                <button id="btn-add-selected" class="btn-primary" disabled>
+                    <i class="fa-solid fa-download"></i> Add Selected to Queue
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content: Queue Manager -->
+        <main class="main-content">
+            <header class="main-header">
+                <div class="header-left">
+                    <h2><i class="fa-solid fa-list-check"></i> Download Queue</h2>
+                </div>
+                <div class="header-controls">
+                    <div class="control-group">
+                        <label for="base-path-input">Save To:</label>
+                        <input type="text" id="base-path-input" class="premium-input" style="width: 250px;"
+                            placeholder="Loading...">
+                    </div>
+                    <div class="control-group">
+                        <label for="mode-select">Mode:</label>
+                        <select id="mode-select" class="premium-select">
+                            <option value="video" selected>📹 Video</option>
+                            <option value="pdf">📄 PDF</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="quality-select">Default Quality:</label>
+                        <select id="quality-select" class="premium-select">
+                            <option value="1080p">1080p</option>
+                            <option value="720p" selected>720p</option>
+                            <option value="480p">480p</option>
+                            <option value="360p">360p</option>
+                            <option value="240p">240p</option>
+                            <option value="144p">144p</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="concurrency-input">Max Downloads:</label>
+                        <input type="number" id="concurrency-input" value="2" min="1" max="10" class="premium-input">
+                    </div>
+                    <button id="btn-pause-all" class="btn-secondary"><i class="fa-solid fa-pause"></i> Pause
+                        All</button>
+                    <button id="btn-resume-all" class="btn-primary" style="display:none;"><i
+                            class="fa-solid fa-play"></i> Resume All</button>
+                </div>
+            </header>
+
+            <div class="queue-area">
+                <div class="queue-stats">
+                    <div class="stat-box">
+                        <span class="stat-value" id="stat-active">0</span>
+                        <span class="stat-label">Active</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value" id="stat-queued">0</span>
+                        <span class="stat-label">Queued</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value" id="stat-completed">0</span>
+                        <span class="stat-label">Completed</span>
+                    </div>
+                </div>
+
+                <div id="queue-list" class="queue-list">
+                    <!-- Empty State -->
+                    <div class="empty-state" id="empty-queue-state">
+                        <i class="fa-regular fa-folder-open"></i>
+                        <p>No downloads in queue.</p>
+                        <small>Select videos from the explorer to start downloading.</small>
+                    </div>
+                    <!-- Download Cards load here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Socket.io and App Logic -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

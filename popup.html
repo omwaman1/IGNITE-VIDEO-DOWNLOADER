@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>IGNITE Downloader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100%;
+            min-width: 350px;
+            max-width: 500px;
+            height: 100vh;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0d1b2a 100%);
+            color: #e0e0e0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-icon {
+            font-size: 24px;
+        }
+
+        .header-text h1 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+
+        .header-text p {
+            font-size: 10px;
+            color: rgba(0, 0, 0, 0.6);
+        }
+
+        /* Tab Navigation */
+        .tabs {
+            display: flex;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.5);
+            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab:hover {
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab.active {
+            color: #feca57;
+            border-bottom-color: #feca57;
+            background: rgba(255, 200, 100, 0.1);
+        }
+
+        .tab-content {
+            display: none;
+            padding: 12px;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #4CAF50, #8BC34A);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-label {
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.5);
+            text-transform: uppercase;
+        }
+
+        /* Stream List */
+        .stream-list {
+            max-height: 120px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+
+        .stream-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 6px;
+            border-left: 3px solid #4CAF50;
+        }
+
+        .stream-url {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 20px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .empty-state-icon {
+            font-size: 36px;
+            margin-bottom: 8px;
+        }
+
+        /* Buttons */
+        button {
+            padding: 10px 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 11px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            flex: 1;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(255, 100, 100, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            min-width: 36px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        /* Progress */
+        .progress-container {
+            background: rgba(33, 150, 243, 0.1);
+            border: 1px solid rgba(33, 150, 243, 0.3);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            font-weight: 600;
+            color: #64b5f6;
+            margin-bottom: 6px;
+        }
+
+        .progress-bar {
+            height: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6b6b, #feca57);
+            transition: width 0.3s;
+        }
+
+        /* Browse Tab - Folder Tree */
+        .folder-tree {
+            font-size: 12px;
+        }
+
+        .folder-item,
+        .video-item {
+            padding: 6px 8px;
+            margin: 2px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .folder-item {
+            background: rgba(255, 200, 100, 0.1);
+        }
+
+        .folder-item:hover {
+            background: rgba(255, 200, 100, 0.2);
+        }
+
+        .folder-item.expanded {
+            background: rgba(255, 200, 100, 0.15);
+        }
+
+        .video-item {
+            background: rgba(100, 200, 255, 0.1);
+            margin-left: 16px;
+        }
+
+        .video-item:hover {
+            background: rgba(100, 200, 255, 0.2);
+        }
+
+        .video-item input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+
+        .video-title {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .video-duration {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .folder-children {
+            display: none;
+            margin-left: 12px;
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            padding-left: 8px;
+        }
+
+        .folder-children.expanded {
+            display: block;
+        }
+
+        .folder-arrow {
+            transition: transform 0.2s;
+        }
+
+        .folder-arrow.expanded {
+            transform: rotate(90deg);
+        }
+
+        /* Settings Tab */
+        .settings-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .form-group label {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase;
+        }
+
+        .form-group input {
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: #fff;
+            font-size: 11px;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #feca57;
+        }
+
+        /* Download Queue */
+        .queue-panel {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 12px;
+        }
+
+        .queue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .queue-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #feca57;
+        }
+
+        .queue-count {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .queue-item {
+            padding: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            margin-bottom: 4px;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .queue-item.downloading {
+            border-left: 2px solid #4CAF50;
+        }
+
+        .queue-item.pending {
+            border-left: 2px solid #888;
+        }
+
+        /* Debug Panel */
+        .debug-panel {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 100, 100, 0.2);
+            border-radius: 4px;
+            padding: 6px;
+            margin-top: 12px;
+            font-size: 9px;
+            font-family: 'Consolas', monospace;
+            max-height: 80px;
+            overflow-y: auto;
+            color: #ff9999;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        /* Browse Actions */
+        .browse-actions {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .browse-actions button {
+            padding: 6px 10px;
+            font-size: 10px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .success-msg {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.4);
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 11px;
+            color: #81c784;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="header-icon">🔥</div>
+        <div class="header-text">
+            <h1>IGNITE Downloader</h1>
+            <p>Video Stream Detector & Batch Downloader</p>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tabs">
+        <div class="tab active" data-tab="streams">📺 Streams</div>
+        <div class="tab" data-tab="browse">📁 Browse</div>
+        <div class="tab" data-tab="settings">⚙️ Settings</div>
+        <div class="tab" data-tab="debug">🐛 Debug</div>
+    </div>
+
+    <!-- STREAMS TAB -->
+    <div id="streams-tab" class="tab-content active">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="streamCount">0</div>
+                <div class="stat-label">Streams</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="segmentCount">0</div>
+                <div class="stat-label">Segments</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="durationCount">0s</div>
+                <div class="stat-label">Duration</div>
+            </div>
+        </div>
+
+        <!-- Server Status Display -->
+        <div id="serverStatus" class="server-status"
+            style="padding: 8px; background: rgba(0,0,0,0.3); border-radius: 6px; margin-bottom: 8px; font-size: 11px;">
+            <span style="color:#888">⏳ Checking server...</span>
+        </div>
+
+        <div id="progressContainer" class="progress-container" style="display: none;">
+            <div class="progress-text" id="progressText">Downloading...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="stream-list" id="streamList">
+            <div class="empty-state">
+                <div class="empty-state-icon">📺</div>
+                <p>No streams detected</p>
+                <small>Play a video to detect HLS streams</small>
+            </div>
+        </div>
+
+        <!-- Folder path indicator -->
+        <div
+            style="padding: 6px 8px; background: rgba(255,200,100,0.15); border-radius: 4px; margin-bottom: 8px; font-size: 10px; color: #feca57;">
+            📁 Save to: <strong id="streamsFolderPath">None selected (root)</strong>
+            <a href="#" onclick="document.querySelector('.tab[data-tab=browse]').click(); return false;"
+                style="color: #81c784; margin-left: 8px;">Select folder →</a>
+        </div>
+
+        <!-- Auto-Index Video Naming -->
+        <div style="margin-bottom: 8px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label style="font-size: 10px; color: #888;">📝 Auto Naming:</label>
+                <button id="resetIndexBtn"
+                    style="font-size: 9px; padding: 3px 8px; background: #feca57; border: none; color: #000; border-radius: 3px; cursor: pointer;">🔄
+                    Reset Index</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 11px; color: #81c784;">Index: <strong id="videoIndexDisplay">0</strong></span>
+                <span style="font-size: 10px; color: #888;">→</span>
+                <select id="videoNameDropdown"
+                    style="flex: 1; font-size: 10px; color: #54a0ff; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; padding: 3px 6px; cursor: pointer; max-width: 200px;">
+                    <option value="">-- Select folder first --</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Auto-Scrape Controls -->
+        <div
+            style="margin-bottom: 8px; padding: 8px; background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.3); border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label style="font-size: 10px; color: #ff6b6b;">🤖 Auto-Scrape:</label>
+                <div style="display: flex; gap: 4px;">
+                    <button id="startAutoScrapeBtn"
+                        style="font-size: 9px; padding: 3px 8px; background: #54a0ff; border: none; color: #fff; border-radius: 3px; cursor: pointer;">▶
+                        Start</button>
+                    <button id="stopAutoScrapeBtn"
+                        style="font-size: 9px; padding: 3px 8px; background: #f66; border: none; color: #fff; border-radius: 3px; cursor: pointer; display: none;">⏹
+                        Stop</button>
+                </div>
+            </div>
+            <div id="autoScrapeStatus" style="font-size: 10px; color: #888;">Click Start to auto-capture all videos
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn-primary" id="downloadBtn" disabled>
+                <span>⬇️</span> Download
+            </button>
+            <button class="btn-secondary" id="refreshBtn" title="Refresh">🔄</button>
+            <button class="btn-secondary" id="copyBtn" title="Copy URL">📋</button>
+            <button class="btn-secondary" id="clearBtn" title="Clear">🗑️</button>
+        </div>
+
+        <div id="successInfo" class="success-msg" style="display: none;"></div>
+        <div class="debug-panel" id="debugPanel"></div>
+    </div>
+
+    <!-- BROWSE TAB - For selecting folder path -->
+    <div id="browse-tab" class="tab-content">
+        <div class="browse-actions">
+            <button class="btn-secondary" id="loadRootBtn">📂 Load Folders</button>
+            <div style="flex: 1; text-align: right; font-size: 10px; color: #888;">
+                Select a folder for downloads
+            </div>
+        </div>
+
+        <div
+            style="padding: 6px 8px; background: rgba(255,200,100,0.15); border-radius: 4px; margin-bottom: 8px; font-size: 10px; color: #feca57;">
+            📌 Current folder: <strong id="currentFolderPath">None selected</strong>
+        </div>
+
+        <div id="folderTree" class="folder-tree">
+            <div class="empty-state">
+                <div class="empty-state-icon">📁</div>
+                <p>Click "Load Folders" to browse</p>
+                <small>Navigate to a folder, then download from Streams tab</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div id="settings-tab" class="tab-content">
+        <div class="settings-form">
+            <div class="form-group">
+                <label>Authorization Token (JWT)</label>
+                <input type="text" id="cfgAuth"
+                    value="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6IjE0OTIwNiIsImVtYWlsIjoic2FudG9zaGF2Y2hhcjQxNDFAZ21haWwuY29tIiwibmFtZSI6IiIsInRpbWVzdGFtcCI6MTc2OTY4NzM0MywidGVuYW50VHlwZSI6InVzZXIiLCJ0ZW5hbnROYW1lIjoiaWduaXRlMjQ3X2RiIiwidGVuYW50SWQiOiIiLCJkaXNwb3NhYmxlIjpmYWxzZX0.GQFHdDLP2nCWyFlaizad2cIWVIhcn4le_5Gnpsba5Lg">
+            </div>
+            <div class="form-group">
+                <label>User ID</label>
+                <input type="text" id="cfgUserId" value="149206">
+            </div>
+            <div class="form-group">
+                <label>Course ID</label>
+                <input type="text" id="cfgCourseId" value="673">
+            </div>
+            <div class="form-group">
+                <label>API Base URL</label>
+                <input type="text" id="cfgApiBase" value="https://ignite247api.classx.co.in">
+            </div>
+            <div class="actions">
+                <button class="btn-primary" id="saveConfigBtn">💾 Save Settings</button>
+                <button class="btn-secondary" id="testConfigBtn">🔍 Test</button>
+            </div>
+            <div id="configStatus" style="font-size: 10px; color: rgba(255,255,255,0.5); margin-top: 8px;"></div>
+        </div>
+    </div>
+
+    <!-- DEBUG TAB -->
+    <div id="debug-tab" class="tab-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 12px; font-weight: 600; color: #feca57;">🐛 Debug Log</span>
+            <button class="btn-secondary" id="clearDebugBtn" style="padding: 4px 8px; font-size: 10px;">🗑️
+                Clear</button>
+        </div>
+        <div id="debugLog" class="debug-panel"
+            style="min-height: 300px; max-height: 350px; overflow-y: auto; font-size: 10px;"></div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
