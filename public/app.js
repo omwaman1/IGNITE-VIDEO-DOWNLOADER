@@ -88,7 +88,7 @@ btnLoadCourse.addEventListener('click', async () => {
         if (data.success) {
             // Uncheck everything
             selectedVideos.clear();
-            updateAddBtn();
+            updateAddButtonState();
             // Clear the tree
             folderTree.innerHTML = '<li class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading Root...</li>';
             // Reload root
@@ -112,9 +112,25 @@ btnResumeAll.addEventListener('click', async () => {
     await fetch('/api/queue/resume', { method: 'POST' });
 });
 
-// Socket Events
+// Socket Events — throttle UI updates to prevent DOM thrashing
+let pendingState = null;
+let rafId = null;
+
+function throttledQueueUpdate(state) {
+    pendingState = state;
+    if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+            rafId = null;
+            if (pendingState) {
+                updateQueueUI(pendingState);
+                pendingState = null;
+            }
+        });
+    }
+}
+
 socket.on('queue_init', updateQueueUI);
-socket.on('queue_update', updateQueueUI);
+socket.on('queue_update', throttledQueueUpdate);
 
 
 // --- Folder Tree Logic ---
@@ -283,6 +299,13 @@ async function handleSelection(checkbox, li, isFolder, currentPath) {
         // Now select all loaded children
         const childCheckboxes = li.querySelectorAll('.tree-children input[type="checkbox"]');
         childCheckboxes.forEach(cb => {
+            // When checking a folder, skip already-downloaded videos
+            if (isChecked && cb.dataset.type === 'VIDEO') {
+                const treeItem = cb.closest('.tree-item');
+                if (treeItem && treeItem.classList.contains('already-downloaded')) {
+                    return; // Skip — already on disk
+                }
+            }
             if (cb.checked !== isChecked) {
                 cb.checked = isChecked;
                 // Dispatch change event to trigger recursive check for nested folders
@@ -314,8 +337,30 @@ function updateSelectionState(checkbox) {
 function updateAddButtonState() {
     const mode = modeSelect.value;
     const typeLabel = mode === 'pdf' ? 'PDF(s)' : 'Video(s)';
+
+    // Count only videos that are NOT already downloaded
+    let newCount = 0;
+    let alreadyCount = 0;
+    selectedVideos.forEach((data, id) => {
+        const cb = document.querySelector(`input[data-id="${id}"]`);
+        if (cb) {
+            const treeItem = cb.closest('.tree-item');
+            if (treeItem && treeItem.classList.contains('already-downloaded')) {
+                alreadyCount++;
+            } else {
+                newCount++;
+            }
+        } else {
+            newCount++;
+        }
+    });
+
     btnAddSelected.disabled = selectedVideos.size === 0;
-    btnAddSelected.innerHTML = `<i class="fa-solid fa-download"></i> Download ${selectedVideos.size} ${typeLabel}`;
+    if (alreadyCount > 0) {
+        btnAddSelected.innerHTML = `<i class="fa-solid fa-download"></i> Download ${newCount} New ${typeLabel} <span style="opacity:0.6;font-size:0.85em">(${alreadyCount} already done)</span>`;
+    } else {
+        btnAddSelected.innerHTML = `<i class="fa-solid fa-download"></i> Download ${newCount} ${typeLabel}`;
+    }
 }
 
 
@@ -385,6 +430,9 @@ async function addSelectedToQueue() {
     recheckAllVisibleVideos();
 }
 
+// Cache DOM element references per card to avoid querySelector on every update
+const cardCache = new Map(); // taskId -> { elements, lastStatus, lastProgress }
+
 function updateQueueUI(state) {
     if (document.activeElement !== basePathInput && state.baseDownloadPath) {
         basePathInput.value = state.baseDownloadPath;
@@ -407,6 +455,7 @@ function updateQueueUI(state) {
         Array.from(queueList.children).forEach(c => {
             if (c.id !== 'empty-queue-state') c.remove();
         });
+        cardCache.clear();
         return;
     }
 
@@ -414,32 +463,20 @@ function updateQueueUI(state) {
 
     const sortedTasks = [...state.tasks].sort((a, b) => {
         const order = { 'downloading': 1, 'encoding': 2, 'queued': 3, 'error': 4, 'completed': 5 };
-        return order[a.status] - order[b.status];
+        return (order[a.status] || 6) - (order[b.status] || 6);
     });
 
     const activeIds = new Set(sortedTasks.map(t => `card-${t.id}`));
     Array.from(queueList.children).forEach(c => {
         if (c.id !== 'empty-queue-state' && !activeIds.has(c.id)) {
             c.remove();
+            cardCache.delete(c.id.replace('card-', ''));
         }
     });
 
     sortedTasks.forEach(task => {
-        let card = document.getElementById(`card-${task.id}`);
-        let statusText = task.status;
-        if (task.status === 'downloading') statusText = `Downloading (${task.progress.toFixed(1)}%)`;
-        if (task.status === 'encoding') statusText = `Fixing Seek (${task.progress.toFixed(1)}%)`;
-        if (task.status === 'error') statusText = 'Error';
-
-        let actionButtons = '';
-        if (task.status === 'downloading') {
-            actionButtons = `<button class="btn-action btn-pause" data-action="pause" data-task="${task.id}"><i class="fa-solid fa-pause"></i></button>`;
-        } else if (task.status === 'paused') {
-            actionButtons = `<button class="btn-action btn-resume" data-action="resume" data-task="${task.id}"><i class="fa-solid fa-play"></i></button>`;
-        }
-        if (['queued', 'downloading', 'paused', 'encoding'].includes(task.status)) {
-            actionButtons += `<button class="btn-action btn-cancel" data-action="cancel" data-task="${task.id}" style="color:var(--error);"><i class="fa-solid fa-xmark"></i></button>`;
-        }
+        let cached = cardCache.get(task.id);
+        let card = cached ? cached.el : null;
 
         if (!card) {
             card = document.createElement('div');
@@ -462,43 +499,86 @@ function updateQueueUI(state) {
                 <div class="c-error" style="color:var(--error); font-size:0.8rem; margin-top:5px; display:none"></div>
             `;
             queueList.appendChild(card);
-            // Remove animation class after it plays once
             setTimeout(() => card.classList.remove('card-new'), 350);
+
+            // Cache element references once
+            cached = {
+                el: card,
+                title: card.querySelector('.c-title'),
+                quality: card.querySelector('.c-quality'),
+                durationWrap: card.querySelector('.c-duration-wrap'),
+                duration: card.querySelector('.c-duration'),
+                status: card.querySelector('.c-status'),
+                prog: card.querySelector('.c-prog'),
+                progWrap: card.querySelector('.c-prog-wrap'),
+                actionsWrap: card.querySelector('.dl-actions-wrap'),
+                errorEl: card.querySelector('.c-error'),
+                lastStatus: null,
+                lastProgress: -1,
+                lastError: null
+            };
+            cardCache.set(task.id, cached);
+
+            // Set static fields once
+            cached.title.textContent = task.title + ' ';
+            cached.quality.textContent = task.quality;
+            if (task.duration) {
+                cached.durationWrap.style.display = 'inline';
+                cached.duration.textContent = task.duration;
+            }
         }
 
-        // Update classes without overwriting card-new
-        card.classList.remove('status-queued', 'status-downloading', 'status-paused', 'status-completed', 'status-error');
-        card.classList.add('download-card', `status-${task.status}`);
-        card.querySelector('.c-title').textContent = task.title + ' ';
-        card.querySelector('.c-quality').textContent = task.quality;
-
-        const dw = card.querySelector('.c-duration-wrap');
-        if (task.duration) {
-            dw.style.display = 'inline';
-            card.querySelector('.c-duration').textContent = task.duration;
-        } else {
-            dw.style.display = 'none';
+        // Skip update if nothing changed
+        const progressRounded = Math.round(task.progress * 10) / 10;
+        if (cached.lastStatus === task.status && cached.lastProgress === progressRounded && cached.lastError === (task.error || null)) {
+            return;
         }
 
-        card.querySelector('.c-status').textContent = statusText;
-        card.querySelector('.c-prog').style.width = `${task.progress}%`;
+        // Update status class
+        if (cached.lastStatus !== task.status) {
+            card.classList.remove('status-queued', 'status-downloading', 'status-paused', 'status-completed', 'status-error', 'status-encoding');
+            card.classList.add('download-card', `status-${task.status}`);
 
-        const aw = card.querySelector('.dl-actions-wrap');
-        if (actionButtons) {
-            aw.innerHTML = `<div class="dl-actions">${actionButtons}</div>`;
-            card.querySelector('.c-prog-wrap').style.marginBottom = '10px';
-        } else {
-            aw.innerHTML = '';
-            card.querySelector('.c-prog-wrap').style.marginBottom = '0';
+            // Rebuild action buttons only on status change
+            let actionButtons = '';
+            if (task.status === 'downloading') {
+                actionButtons = `<button class="btn-action btn-pause" data-action="pause" data-task="${task.id}"><i class="fa-solid fa-pause"></i></button>`;
+            } else if (task.status === 'paused') {
+                actionButtons = `<button class="btn-action btn-resume" data-action="resume" data-task="${task.id}"><i class="fa-solid fa-play"></i></button>`;
+            }
+            if (['queued', 'downloading', 'paused', 'encoding'].includes(task.status)) {
+                actionButtons += `<button class="btn-action btn-cancel" data-action="cancel" data-task="${task.id}" style="color:var(--error);"><i class="fa-solid fa-xmark"></i></button>`;
+            }
+
+            if (actionButtons) {
+                cached.actionsWrap.innerHTML = `<div class="dl-actions">${actionButtons}</div>`;
+                cached.progWrap.style.marginBottom = '10px';
+            } else {
+                cached.actionsWrap.innerHTML = '';
+                cached.progWrap.style.marginBottom = '0';
+            }
         }
 
-        const ew = card.querySelector('.c-error');
-        if (task.error) {
-            ew.textContent = task.error;
-            ew.style.display = 'block';
-        } else {
-            ew.style.display = 'none';
+        // Update progress text + bar
+        let statusText = task.status;
+        if (task.status === 'downloading') statusText = `Downloading (${progressRounded}%)`;
+        if (task.status === 'encoding') statusText = `Fixing Seek (${progressRounded}%)`;
+        if (task.status === 'error') statusText = 'Error';
+
+        cached.status.textContent = statusText;
+        cached.prog.style.width = `${task.progress}%`;
+
+        // Error display
+        if (task.error && cached.lastError !== task.error) {
+            cached.errorEl.textContent = task.error;
+            cached.errorEl.style.display = 'block';
+        } else if (!task.error && cached.lastError) {
+            cached.errorEl.style.display = 'none';
         }
+
+        cached.lastStatus = task.status;
+        cached.lastProgress = progressRounded;
+        cached.lastError = task.error || null;
     });
 }
 

@@ -107,9 +107,10 @@ function getCacheStats() {
 // Serialises all outgoing API calls with a delay between each one,
 // and retries automatically on HTTP 429 with exponential backoff.
 
-const THROTTLE_MS = 500;          // min gap between requests
-const MAX_RETRIES = 5;            // retry attempts on 429
-const INITIAL_BACKOFF_MS = 5000;  // first retry wait (doubles each time)
+const THROTTLE_MS = 1500;         // min gap between requests (was 500)
+const MAX_RETRIES = 3;            // retry attempts on 429
+const SERVER_RATE_LIMIT_MS = 10 * 60 * 1000; // server enforces 10-min rate limit window
+let globalCooldownUntil = 0;      // timestamp — all requests wait until this clears
 
 let lastRequestTime = 0;
 const requestQueue = [];
@@ -128,6 +129,13 @@ async function drainQueue() {
     queueRunning = true;
     while (requestQueue.length > 0) {
         const { fn, resolve, reject } = requestQueue.shift();
+
+        // Respect global cooldown (set after any 429)
+        const cooldownRemaining = globalCooldownUntil - Date.now();
+        if (cooldownRemaining > 0) {
+            console.log(`🧊 Global cooldown: waiting ${(cooldownRemaining / 1000).toFixed(1)}s before next request...`);
+            await sleep(cooldownRemaining);
+        }
 
         // Enforce minimum gap between requests
         const elapsed = Date.now() - lastRequestTime;
@@ -156,8 +164,25 @@ async function executeWithRetry(fn) {
             const status = err.response ? err.response.status : null;
             if (status === 429 && attempt < MAX_RETRIES) {
                 attempt++;
-                const wait = INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
-                console.warn(`⏳ Rate limited (429) — retry ${attempt}/${MAX_RETRIES} in ${(wait / 1000).toFixed(0)}s...`);
+
+                // Parse Retry-After header if available, else use server's 10-min window
+                let wait = SERVER_RATE_LIMIT_MS;
+                const retryAfter = err.response?.headers?.['retry-after'];
+                if (retryAfter) {
+                    const parsed = parseInt(retryAfter, 10);
+                    if (!isNaN(parsed)) {
+                        wait = parsed * 1000; // Retry-After is in seconds
+                    }
+                }
+
+                // Only set global cooldown if it extends beyond current one
+                const cooldownEnd = Date.now() + wait;
+                if (cooldownEnd > globalCooldownUntil) {
+                    globalCooldownUntil = cooldownEnd;
+                }
+
+                const waitMin = (wait / 60000).toFixed(1);
+                console.warn(`⏳ Rate limited (429) — retry ${attempt}/${MAX_RETRIES} in ${waitMin} min (global cooldown set to ${waitMin} min)...`);
                 await sleep(wait);
                 continue;
             }

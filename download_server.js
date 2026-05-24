@@ -17,6 +17,7 @@ const http = require('http');
 const https = require('https');
 const { spawn } = require('child_process');
 const { URL } = require('url');
+const ffmpegPath = require('ffmpeg-static');
 
 // HTTP agents for connection reuse (keep-alive) - much faster!
 const httpAgent = new http.Agent({
@@ -492,7 +493,7 @@ function combineWithFFmpeg(segmentFiles, outputPath, downloadId) {
         const content = segmentFiles.map(f => `file '${f.replace(/\\/g, '/')}'`).join('\n');
         fs.writeFileSync(concatFile, content);
 
-        const ffmpeg = spawn('ffmpeg', [
+        const ffmpeg = spawn(ffmpegPath, [
             '-f', 'concat',
             '-safe', '0',
             '-i', concatFile,

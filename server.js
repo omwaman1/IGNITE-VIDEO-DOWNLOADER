@@ -124,31 +124,17 @@ app.post('/api/download-batch', async (req, res) => {
             return res.status(400).json({ error: 'videos must be a non-empty array' });
         }
 
-        let queued = 0, skipped = 0;
+        const videoInfos = videos.map(v => ({
+            id: v.videoId,
+            courseId: v.courseId || activeCourseId,
+            title: v.title || `Video_${v.videoId}`,
+            url: null,
+            quality,
+            folderPath: v.folderPath || [],
+            duration: v.duration || ''
+        }));
 
-        for (const v of videos) {
-            const { videoId, title, folderPath = [], duration = '' } = v;
-
-            // Pre-flight skip check (no API call needed)
-            const skipReason = downloader.checkSkip(videoId, title || `Video_${videoId}`, quality, folderPath);
-            if (skipReason) {
-                skipped++;
-                continue;
-            }
-
-            // Queue with courseId — URL will be fetched lazily right before download
-            downloader.addDownload({
-                id: videoId,
-                courseId: v.courseId || activeCourseId,
-                title: title || `Video_${videoId}`,
-                url: null,  // lazy — fetched when download starts
-                quality,
-                folderPath,
-                duration
-            });
-            queued++;
-        }
-
+        const { queued, skipped } = downloader.addDownloadBatch(videoInfos);
         res.json({ success: true, queued, skipped, errors: [] });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -162,29 +148,15 @@ app.post('/api/download-pdf-batch', async (req, res) => {
             return res.status(400).json({ error: 'videos must be a non-empty array' });
         }
 
-        let queued = 0, skipped = 0;
+        const pdfInfos = videos.map(v => ({
+            id: v.videoId,
+            courseId: v.courseId || activeCourseId,
+            title: v.title || `Video_${v.videoId}`,
+            url: null,
+            folderPath: v.folderPath || []
+        }));
 
-        for (const v of videos) {
-            const { videoId, title, folderPath = [] } = v;
-            const safeTitle = (title || `Video_${videoId}`).replace(/[\\/:*?"<>|]/g, '').trim();
-
-            const skipReason = downloader.checkSkipPdf(videoId, safeTitle, folderPath);
-            if (skipReason) {
-                skipped++;
-                continue;
-            }
-
-            // Queue with courseId — PDF URL will be fetched lazily
-            downloader.addPdfDownload({
-                id: videoId,
-                courseId: v.courseId || activeCourseId,
-                title: title || `Video_${videoId}`,
-                url: null,  // lazy
-                folderPath
-            });
-            queued++;
-        }
-
+        const { queued, skipped } = downloader.addPdfDownloadBatch(pdfInfos);
         res.json({ success: true, queued, skipped, errors: [] });
     } catch (err) {
         res.status(500).json({ error: err.message });

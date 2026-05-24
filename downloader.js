@@ -7,6 +7,10 @@ const https = require('https');
 const { spawn } = require('child_process');
 const { URL } = require('url');
 const api = require('./api');
+const ffmpegPath = require('ffmpeg-static');
+
+// Set ffmpeg path for fluent-ffmpeg as well
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 100, maxFreeSockets: 50, timeout: 30000 });
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 100, maxFreeSockets: 50, timeout: 30000 });
@@ -35,12 +39,12 @@ function broadcastState() {
     if (!io) return;
 
     const now = Date.now();
-    if (now - lastEmitTime < 500) {
+    if (now - lastEmitTime < 1000) {
         if (!emitTimeout) {
             emitTimeout = setTimeout(() => {
                 emitTimeout = null;
                 broadcastStateNow();
-            }, 500);
+            }, 1000);
         }
         return;
     }
@@ -239,6 +243,92 @@ function addDownload(videoInfo) {
     return taskId;
 }
 
+// Batch version — queues all items first, then broadcasts + processes once
+function addDownloadBatch(videoInfos) {
+    let queued = 0, skipped = 0;
+    for (const videoInfo of videoInfos) {
+        const skipReason = checkSkip(videoInfo.id, videoInfo.title, videoInfo.quality, videoInfo.folderPath);
+        if (skipReason) { skipped++; continue; }
+
+        const taskId = `${videoInfo.id}_${Date.now()}_${queued}`;
+        const safeTitle = videoInfo.title.replace(/[\\/:*?"<>|]/g, '').trim();
+        const paths = videoInfo.folderPath || [];
+        const safePaths = paths.map(p => p.replace(/[\\/:*?"<>|]/g, '').trim());
+        const targetDir = path.join(baseDownloadPath, ...safePaths);
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+        }
+        const outputPath = path.join(targetDir, `${safeTitle}_${videoInfo.quality}.mp4`);
+
+        tasks[taskId] = {
+            id: taskId,
+            videoId: videoInfo.id,
+            courseId: videoInfo.courseId,
+            title: videoInfo.title,
+            quality: videoInfo.quality,
+            url: videoInfo.url || null,
+            duration: videoInfo.duration || '',
+            durationSecs: 0,
+            status: 'queued',
+            progress: 0,
+            outputPath,
+            process: null
+        };
+        queue.push(taskId);
+        queued++;
+    }
+
+    // Single broadcast + process after all items queued
+    if (queued > 0) {
+        broadcastState();
+        processQueue();
+    }
+    return { queued, skipped };
+}
+
+// Batch version for PDFs
+function addPdfDownloadBatch(pdfInfos) {
+    let queued = 0, skipped = 0;
+    for (const pdfInfo of pdfInfos) {
+        const safeTitle = pdfInfo.title.replace(/[\\/:*?"<>|]/g, '').trim();
+        const skipReason = checkSkipPdf(pdfInfo.id, pdfInfo.title, pdfInfo.folderPath);
+        if (skipReason) { skipped++; continue; }
+
+        const taskId = `pdf_${pdfInfo.id}_${Date.now()}_${queued}`;
+        const paths = pdfInfo.folderPath || [];
+        const safePaths = paths.map(p => p.replace(/[\\/:*?"<>|]/g, '').trim());
+        const targetDir = path.join(baseDownloadPath, ...safePaths);
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+        }
+        const outputPath = path.join(targetDir, `${safeTitle}.pdf`);
+
+        tasks[taskId] = {
+            id: taskId,
+            videoId: pdfInfo.id,
+            courseId: pdfInfo.courseId,
+            title: pdfInfo.title,
+            quality: 'PDF',
+            url: pdfInfo.url || null,
+            duration: '',
+            durationSecs: 0,
+            status: 'queued',
+            progress: 0,
+            outputPath,
+            process: null,
+            isPdf: true
+        };
+        queue.push(taskId);
+        queued++;
+    }
+
+    if (queued > 0) {
+        broadcastState();
+        processQueue();
+    }
+    return { queued, skipped };
+}
+
 function checkSkipPdf(videoId, title, folderPath) {
     const safeTitle = title.replace(/[\\/:*?"<>|]/g, '').trim();
     const paths = folderPath || [];
@@ -395,7 +485,8 @@ async function startDownload(taskId, task) {
                         // Increment individually for smooth UI progress
                         downloadedChunks++;
                         const pct = Math.min((downloadedChunks / segments.length) * 100, 99.9);
-                        if (Math.abs(task.progress - pct) > 0.5) {
+                        // Only update on meaningful progress (every 2%) to avoid UI flooding
+                        if (Math.abs(task.progress - pct) > 2) {
                             task.progress = pct;
                             broadcastState();
                         }
@@ -434,7 +525,7 @@ async function startDownload(taskId, task) {
             task.outputPath
         ];
 
-        const combineProc = spawn('ffmpeg', args);
+        const combineProc = spawn(ffmpegPath, args);
         task.process = combineProc;
         
         await new Promise((resolve, reject) => {
@@ -673,7 +764,9 @@ async function downloadPdf(taskId, task) {
 module.exports = {
     init,
     addDownload,
+    addDownloadBatch,
     addPdfDownload,
+    addPdfDownloadBatch,
     pauseAll,
     resumeAll,
     pauseTask,
